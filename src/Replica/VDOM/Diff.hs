@@ -4,7 +4,6 @@ module Replica.VDOM.Diff where
 
 import           Data.Aeson                 ((.=))
 import qualified Data.Aeson                 as A
-import           Data.Monoid                ((<>))
 import qualified Data.Text                  as T
 import qualified Data.Map                   as M
 import qualified Data.Algorithm.Diff        as D
@@ -79,6 +78,7 @@ instance A.ToJSON KeyDiff where
 diff :: HTML -> HTML -> [Diff]
 diff a b = concatMap (uncurry toDiff) (zip vdiffs is)
   where
+    go :: Int -> [D.Diff a] -> [Int]
     go i (D.First _:ds) = i:go i ds
     go i (_:ds) = i:go (i + 1) ds
     go _ [] = []
@@ -89,15 +89,17 @@ diff a b = concatMap (uncurry toDiff) (zip vdiffs is)
     toDiff :: D.Diff VDOM -> Int -> [Diff]
     toDiff (D.First _) i  = [Delete i]
     toDiff (D.Second v) i = [Insert i v]
-    toDiff (D.Both (VNode _ ca c) (VNode _ da d)) i
+    toDiff (D.Both (VNode _ ca cNs c) v@(VNode _ da dNs d)) i
+      | cNs /= dNs          = [Delete i, Insert i v]
       | null das && null ds = []
       | otherwise           = [Diff i (diffAttrs ca da) (diff c d)]
       where
         das = diffAttrs ca da
         ds  = diff c d
-    toDiff (D.Both (VLeaf _ ca) (VLeaf _ da)) i
-      | null das  = []
-      | otherwise = [Diff i (diffAttrs ca da) []]
+    toDiff (D.Both (VLeaf _ ca cNs) v@(VLeaf _ da dNs)) i
+      | cNs /= dNs = [Delete i, Insert i v]
+      | null das   = []
+      | otherwise  = [Diff i (diffAttrs ca da) []]
       where
         das = diffAttrs ca da
     toDiff (D.Both (VText m) (VText n)) i
@@ -116,14 +118,14 @@ diff a b = concatMap (uncurry toDiff) (zip vdiffs is)
     eqType Nothing Nothing = True
     eqType _ _ = False
 
-    eqNode (VNode n na _) (VNode m ma _)
+    eqNode (VNode n na nNs _) (VNode m ma mNs _)
       | Just (AText k1) <- key na
       , Just (AText k2) <- key ma = k1 == k2
-      | otherwise = n == m && M.lookup "type" na `eqType` M.lookup "type" ma
-    eqNode (VLeaf n na) (VLeaf m ma)
+      | otherwise = n == m && nNs == mNs && M.lookup "type" na `eqType` M.lookup "type" ma
+    eqNode (VLeaf n na nNs) (VLeaf m ma mNs)
       | Just (AText k1) <- key na
       , Just (AText k2) <- key ma = k1 == k2
-      | otherwise = n == m && M.lookup "type" na `eqType` M.lookup "type" ma
+      | otherwise = n == m && nNs == mNs && M.lookup "type" na `eqType` M.lookup "type" ma
     eqNode (VText _) (VText _) = True
     eqNode (VRawText _) (VRawText _) = True
     eqNode _ _ = False
@@ -152,7 +154,9 @@ diffAttrs a b
     diffVValue (ABool m) vn@(ABool n)
       | m == n = []
       | otherwise = [Replace vn]
-    diffVValue (AEvent _) (AEvent _) = []
+    diffVValue (AEvent m _) vn@(AEvent n _)
+       | m == n = []
+       | otherwise = [Replace vn]
     diffVValue (AMap m) (AMap n)
       | null das  = []
       | otherwise = [DiffMap $ diffAttrs m n]
@@ -167,10 +171,10 @@ patch (Insert i v:rds) a    = patch rds $ take i a <> [v] <> drop i a
 patch (Diff i ads ds:rds) a = patch rds $ take i a <> [v] <> drop (i + 1) a
   where
     v = case a !! i of
-      VNode e as cs -> VNode e (patchAttrs ads as) (patch ds cs)
-      VLeaf e as    -> VLeaf e (patchAttrs ads as)
-      VText _       -> error "Can't node patch text"
-      VRawText _    -> error "Can't node patch text"
+      VNode e as ns cs -> VNode e (patchAttrs ads as) ns (patch ds cs)
+      VLeaf e as ns    -> VLeaf e (patchAttrs ads as) ns
+      VText _          -> error "Can't node patch text"
+      VRawText _       -> error "Can't node patch text"
 patch (ReplaceText i n:rds) a = patch rds $ take i a <> [v] <> drop (i + 1) a
   where
     v = case a !! i of

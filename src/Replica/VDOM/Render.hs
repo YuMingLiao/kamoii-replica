@@ -13,14 +13,14 @@ renderHTML = mconcat . map renderVDOM
 
 renderVDOM :: VDOM -> TB.Builder
 renderVDOM vdom = case vdom of
-  VNode name attrs children -> mconcat
+  VNode name attrs _mNamespace children -> mconcat
     [ tag $ TB.fromText name <> renderAttrs attrs
     , mconcat $ map renderVDOM children
     , tag $ sl <> TB.fromText name
     ]
-  VLeaf name attrs          -> tag $ TB.fromText name <> renderAttrs attrs
-  VText txt                 -> renderEscapedString txt
-  VRawText txt              -> TB.fromText txt
+  VLeaf name attrs _mNamespace -> tag $ TB.fromText name <> renderAttrs attrs
+  VText txt                    -> renderEscapedString txt
+  VRawText txt                 -> TB.fromText txt
   where
     tag a = TB.singleton '<' <> a <> TB.singleton '>'
     sl = TB.singleton '/'
@@ -39,7 +39,7 @@ renderAttrs = foldMap (TB.singleton ' ' <>) . _renderAttrs
       AText txt   -> [TB.fromText name <> eq <> dq <> renderEscapedString txt <> dq]
       ABool True  -> [TB.fromText name]
       ABool False -> []
-      AEvent _    -> []
+      AEvent _ _  -> []
       AMap attrs  -> _renderAttrs attrs
 
 renderEscapedString :: T.Text -> TB.Builder

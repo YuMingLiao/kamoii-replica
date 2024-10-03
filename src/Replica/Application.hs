@@ -1,6 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Replica.Application (
     Application (..),
@@ -93,15 +94,16 @@ about the follwing problem.
 TODO: WRITE
 -}
 data Application state = Application
-    { cfgInitial :: Context -> ResourceT IO state
+    { cfgInitial :: {-Context -> -} ResourceT IO state
     , cfgStep :: state -> ResourceT IO (Maybe (V.HTML, state))
     }
 
 -- Request header, Path, Query,
 -- JS FFI
 data Context = Context
-    { jsCall :: forall a. FromJSON a => JSCode -> IO (Either JSError a)
-    }
+--     { 
+--      jsCall :: forall a. FromJSON a => JSCode -> IO (Either JSError a)
+--     }
 
 -- * Session
 
@@ -205,7 +207,7 @@ firstStep Application{cfgInitial = initial, cfgStep = step} = mask $ \restore ->
     rstate <- RI.createInternalState
     let release = mkRelease doneVar rstate
     flip onException release $ do
-        r <- restore . flip RI.runInternalState rstate $ step =<< initial
+        r <- restore . flip RI.runInternalState rstate $ step =<< initial 
         case r of
             Nothing -> do
                 release
