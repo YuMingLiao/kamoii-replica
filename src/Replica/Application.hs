@@ -45,6 +45,7 @@ import Data.Bool (bool)
 import Data.IORef (atomicModifyIORef, newIORef)
 import Data.Maybe (isJust)
 import Data.Void (Void, absurd)
+import Data.Functor ((<&>))
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Resource (ResourceT)
@@ -95,7 +96,7 @@ TODO: WRITE
 -}
 data Application state = Application
     { cfgInitial :: {-Context -> -} ResourceT IO state
-    , cfgStep :: state -> ResourceT IO (Maybe (V.HTML, state))
+    , cfgStep :: state -> ResourceT IO (Maybe (V.HTML, state, IO ()))
     }
 
 -- Request header, Path, Query,
@@ -212,12 +213,12 @@ firstStep Application{cfgInitial = initial, cfgStep = step} = mask $ \restore ->
             Nothing -> do
                 release
                 pure Nothing
-            Just (_vdom, state) -> do
+            Just (_vdom, state, unblock) -> do
                 vdom <- evaluate _vdom
                 pure $
                     Just
                         ( vdom
-                        , startSession release step rstate (vdom, state)
+                        , startSession release step rstate (vdom, state, unblock)
                         , release
                         )
   where
@@ -233,13 +234,13 @@ dispatchEvent html Event{..} =
 
 startSession ::
     IO () ->
-    (st -> ResourceT IO (Maybe (V.HTML, st))) ->
+    (st -> ResourceT IO (Maybe (V.HTML, st, IO ()))) ->
     RI.InternalState ->
-    (V.HTML, st) ->
+    (V.HTML, st, IO ()) ->
     IO Session
-startSession release step rstate (vdom, st) = flip onException release $ do
+startSession release step rstate (vdom, st, unblock) = flip onException release $ do
     let frame0 = Frame 0 vdom (const $ Just $ pure ())
-    let frame1 = Frame 1 vdom (dispatchEvent vdom)
+    let frame1 = Frame 1 vdom (\e -> dispatchEvent vdom e <&> (>> unblock))
     (fv, qv) <- atomically $ do
         r <- newTMVar Nothing
         f <- newTVar (frame0, r)
@@ -282,7 +283,7 @@ startSession release step rstate (vdom, st) = flip onException release $ do
 -}
 stepLoop ::
     (Frame -> IO (TMVar (Maybe Event))) ->
-    (st -> ResourceT IO (Maybe (V.HTML, st))) ->
+    (st -> ResourceT IO (Maybe (V.HTML, st, IO ()))) ->
     st ->
     Frame ->
     ResourceT IO ()
@@ -292,9 +293,9 @@ stepLoop setNewFrame step st frame = do
     _ <- liftIO . atomically $ tryPutTMVar stepedBy Nothing
     case r of
         Nothing -> pure ()
-        Just (_newVdom, newSt) -> do
+        Just (_newVdom, newSt, unblock) -> do
             newVdom <- liftIO $ evaluate _newVdom
-            let newFrame = Frame (frameNumber frame + 1) newVdom (dispatchEvent newVdom)
+            let newFrame = Frame (frameNumber frame + 1) newVdom (\e -> dispatchEvent newVdom e <&> (>> unblock))
             stepLoop setNewFrame step newSt newFrame
 
 {- | fireLoop
