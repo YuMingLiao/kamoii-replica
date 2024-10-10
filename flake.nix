@@ -1,20 +1,15 @@
 {
-  inputs = rec {
-    flake-parts.url = "github:hercules-ci/flake-parts";
-    haskell-flake.url = "github:srid/haskell-flake";
+  inputs = {
+    common.url = "github:YuMingLiao/common";
   };
   outputs =
     inputs@{
       self,
       nixpkgs,
-      flake-parts,
-      haskell-flake,
+      common,
       ...
     }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = nixpkgs.lib.systems.flakeExposed;
-      imports = [ inputs.haskell-flake.flakeModule ];
-
+    common.lib.mkFlake { inherit inputs; } {
       perSystem =
         {
           self',

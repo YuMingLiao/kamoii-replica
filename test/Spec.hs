@@ -9,6 +9,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Instances
 
 import           Replica.VDOM
+import           Replica.VDOM.Types
 
 instance Arbitrary Attr where
   arbitrary = do
@@ -16,19 +17,19 @@ instance Arbitrary Attr where
     case t of
       0 -> AText <$> arbitrary
       1 -> ABool <$> arbitrary
-      2 -> pure $ AEvent (\_ -> pure ())
+      2 -> AEvent <$> pure (EventOptions False False False) <*> pure (\_ -> pure ())
       3 -> AMap <$> arbitrary
 
 instance Eq Attr where
   AText m == AText n = m == n
   ABool m == ABool n = m == n
-  AEvent _ == AEvent _ = True
+  AEvent _ _ == AEvent _ _ = True
   AMap m   == AMap n = m == n
 
 instance Show Attr where
   show (AText t)  = "AText " <> T.unpack t
   show (ABool t)  = "ABool " <> show t
-  show (AEvent _) = "AEvent"
+  show (AEvent _ _) = "AEvent"
   show (AMap m)   = "AMap " <> show m
  
 propAttrsDiff :: Attrs -> Attrs -> Bool 
@@ -47,7 +48,7 @@ instance Arbitrary VDOM where
   arbitrary = do
     t <- choose (0, 1) :: Gen Int
     case t of
-      0 -> VNode <$> arbitrary <*> arbitrary <*> arbitrary
+      0 -> VNode <$> arbitrary <*> arbitrary <*> pure Nothing <*> arbitrary
       -- 1 -> VLeaf <$> arbitrary <*> arbitrary
       1 -> VText <$> arbitrary
 
