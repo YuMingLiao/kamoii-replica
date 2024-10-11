@@ -5,7 +5,6 @@
   outputs =
     inputs@{
       self,
-      nixpkgs,
       common,
       ...
     }:
