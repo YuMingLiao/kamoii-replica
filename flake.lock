@@ -24,11 +24,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1728624059,
-        "narHash": "sha256-NEEJISOaVHqDYptNHpMyr3JrdCu23WFVRFVYGKn684c=",
+        "lastModified": 1728626944,
+        "narHash": "sha256-FgK+sZ8At9/XgONZOYIAZ/lh5ke1oLHExe9ESIIgPTE=",
         "owner": "YuMingLiao",
         "repo": "common",
-        "rev": "52bf9e36af1c8030c1c3bfebc9405074b290513d",
+        "rev": "73150f32deed7f171c1b39dfea6849aaaf0602f5",
         "type": "github"
       },
       "original": {
