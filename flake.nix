@@ -1,10 +1,12 @@
 {
   inputs = {
     common.url = "github:YuMingLiao/common";
+    nixpkgs.follows = "common/nixpkgs";
   };
   outputs =
     inputs@{
       self,
+      nixpkgs,
       common,
       ...
     }:
@@ -19,12 +21,16 @@
         with pkgs.lib.fileset;
         with builtins;
         {
-          haskellProjects.ghc965 = {
-            basePackages = pkgs.haskell.packages.ghc965;
-           };
-
           haskellProjects.default = {
-            basePackages = config.haskellProjects.ghc965.outputs.finalPackages;
+            basePackages = pkgs.haskell.packages.ghc9101;
+            settings = {
+              websockets.jailbreak = true;
+              bytebuild.jailbreak = true;
+              chronos.jailbreak = true;
+            };
+            packages = {
+              websockets.source = "0.13.0.0";
+            };
           };
 
           packages.default = self'.packages.replica; 

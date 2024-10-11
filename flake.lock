@@ -100,7 +100,11 @@
     },
     "root": {
       "inputs": {
-        "common": "common"
+        "common": "common",
+        "nixpkgs": [
+          "common",
+          "nixpkgs"
+        ]
       }
     },
     "systems": {
