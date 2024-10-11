@@ -6,7 +6,6 @@
   outputs =
     inputs@{
       self,
-      nixpkgs,
       common,
       ...
     }:
@@ -22,7 +21,7 @@
         with builtins;
         {
           haskellProjects.default = {
-            basePackages = pkgs.haskell.packages.ghc9101;
+            basePackages = config.haskellProjects.ghc9101.outputs.finalPackages;
             settings = {
               websockets.jailbreak = true;
               bytebuild.jailbreak = true;
