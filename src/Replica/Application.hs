@@ -101,6 +101,7 @@ TODO: WRITE
 data Application state = Application
     { cfgInitial :: {-Context -> -} ResourceT IO state
     , cfgStep :: Context -> state -> ResourceT IO (Maybe (V.HTML, state, IO ()))
+    , cfgConn :: Connection
     }
 
 -- Request header, Path, Query,
@@ -207,9 +208,8 @@ Implementation notes:
    `releaseRes` を呼び出さないといけないため。
 -}
 firstStep :: Application state -> IO (Maybe (V.HTML, IO Session, IO ()))
-firstStep Application{cfgInitial = initial, cfgStep = step} = mask $ \restore -> do
+firstStep Application{cfgInitial = initial, cfgStep = step, cfgConn = conn} = mask $ \restore -> do
     doneVar <- newIORef False
-    conn  <- acceptRequest pendingConn
     cbs   <- newIORef (0, M.empty)
     rstate <- RI.createInternalState
     let release = mkRelease doneVar rstate
@@ -224,7 +224,7 @@ firstStep Application{cfgInitial = initial, cfgStep = step} = mask $ \restore ->
               )
           , unregisterCallback = \(Callback cbId') -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
               ((cbId, M.delete cbId' cbs'), ())
-          , call = \arg js -> sendTextData conn $ A.encode $ Call (A.toJSON arg) js
+          , call = \arg js -> sendTextData undefined $ A.encode $ Call (A.toJSON arg) js
           }
 
     flip onException release $ do

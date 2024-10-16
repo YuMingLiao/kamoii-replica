@@ -44,7 +44,7 @@ library
       Paths_replica
   hs-source-dirs:
       src
-  ghc-options: -Wall -ferror-spans -Wincomplete-uni-patterns -Wincomplete-record-updates -Wmissing-import-lists
+  ghc-options: -Wall -ferror-spans -Wincomplete-uni-patterns -Wincomplete-record-updates -Wmissing-import-lists -fwrite-ide-info
   build-depends:
       Diff
     , aeson

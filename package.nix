@@ -49,6 +49,7 @@ in
     "-Wincomplete-uni-patterns"
     "-Wincomplete-record-updates"
     "-Wmissing-import-lists"
+    "-fwrite-ide-info"
   ];
   extra-directories = (
     modName:

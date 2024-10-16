@@ -119,24 +119,10 @@ backendApp Config{..} sm req respond
     | otherwise =
         respond $ responseLBS status404 [] ""
   where
-    ctx = Context
-        { registerCallback = \cb -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
-            ( ( cbId + 1
-              , flip (M.insert cbId) cbs' $ \arg -> case A.fromJSON arg of
-                  A.Success arg' -> cb arg'
-                  A.Error e -> traceIO $ "callCallback: couldn't decode " <> show arg <> ": " <> show e
-              )
-            , Callback cbId
-            )
-        , unregisterCallback = \(Callback cbId') -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
-            ((cbId, M.delete cbId' cbs'), ())
-        , call = \arg js -> sendTextData conn $ A.encode $ Call (A.toJSON arg) js
-        }
-
     app' =
         S.Application
             { S.cfgInitial = cfgInitial
-            , S.cfgStep = cfgStep ctx
+            , S.cfgStep = cfgStep 
             }
 
     isAcceptable = isJust $ do
