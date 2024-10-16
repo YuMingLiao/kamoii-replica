@@ -50,9 +50,13 @@ import Data.Functor ((<&>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Resource (ResourceT)
 import qualified Control.Monad.Trans.Resource as RI
-import Replica.Types (Event (..), SessionEventError (InvalidEvent))
+import Replica.Types (Event (..), SessionEventError (InvalidEvent), Context (..), Callback (..), Update (Call))
 import qualified Replica.VDOM as V
-
+import qualified Data.Map                       as M
+import Network.WebSockets.Connection (sendTextData)
+import qualified Data.Aeson as A
+import Debug.Trace (traceIO)
+import           Data.IORef                     (newIORef, atomicModifyIORef')
 -- * Application
 
 {- | Application
@@ -96,12 +100,12 @@ TODO: WRITE
 -}
 data Application state = Application
     { cfgInitial :: {-Context -> -} ResourceT IO state
-    , cfgStep :: state -> ResourceT IO (Maybe (V.HTML, state, IO ()))
+    , cfgStep :: Context -> state -> ResourceT IO (Maybe (V.HTML, state, IO ()))
     }
 
 -- Request header, Path, Query,
 -- JS FFI
-data Context = Context
+-- data Context = Context
 --     { 
 --      jsCall :: forall a. FromJSON a => JSCode -> IO (Either JSError a)
 --     }
@@ -205,10 +209,26 @@ Implementation notes:
 firstStep :: Application state -> IO (Maybe (V.HTML, IO Session, IO ()))
 firstStep Application{cfgInitial = initial, cfgStep = step} = mask $ \restore -> do
     doneVar <- newIORef False
+    conn  <- acceptRequest pendingConn
+    cbs   <- newIORef (0, M.empty)
     rstate <- RI.createInternalState
     let release = mkRelease doneVar rstate
+    let ctx = Context
+          { registerCallback = \cb -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
+              ( ( cbId + 1
+                , flip (M.insert cbId) cbs' $ \arg -> case A.fromJSON arg of
+                    A.Success arg' -> cb arg'
+                    A.Error e -> traceIO $ "callCallback: couldn't decode " <> show arg <> ": " <> show e
+                )
+              , Callback cbId
+              )
+          , unregisterCallback = \(Callback cbId') -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
+              ((cbId, M.delete cbId' cbs'), ())
+          , call = \arg js -> sendTextData conn $ A.encode $ Call (A.toJSON arg) js
+          }
+
     flip onException release $ do
-        r <- restore . flip RI.runInternalState rstate $ step =<< initial 
+        r <- restore . flip RI.runInternalState rstate $ step ctx =<< initial 
         case r of
             Nothing -> do
                 release
@@ -218,7 +238,7 @@ firstStep Application{cfgInitial = initial, cfgStep = step} = mask $ \restore ->
                 pure $
                     Just
                         ( vdom
-                        , startSession release step rstate (vdom, state, unblock)
+                        , startSession release (step ctx) rstate (vdom, state, unblock)
                         , release
                         )
   where

@@ -41,7 +41,7 @@ import Replica.SessionID (SessionID)
 import qualified Replica.SessionID as SID
 import Replica.SessionManager (SessionManage)
 import qualified Replica.SessionManager as SM
-import Replica.Types (Event (evtClientFrame), SessionAttachingError (SessionAlreadyAttached, SessionDoesntExist), SessionEventError (IllformedData), Update (ReplaceDOM, UpdateDOM))
+import Replica.Types (Event (evtClientFrame), SessionAttachingError (SessionAlreadyAttached, SessionDoesntExist), SessionEventError (IllformedData), Update (ReplaceDOM, UpdateDOM), Context (..))
 import qualified Replica.VDOM as V
 import qualified Replica.VDOM.Render as R
 
@@ -56,7 +56,7 @@ data Config st = Config
     , -- | limit for re-connecting span
       cfgWSReconnectionSpanLimit :: Ch.Timespan
     , cfgInitial :: ResourceT IO st
-    , cfgStep :: st -> ResourceT IO (Maybe (V.HTML, st, IO ()))
+    , cfgStep :: Context -> st -> ResourceT IO (Maybe (V.HTML, st, IO ()))
     }
 
 -- | Create replica application.
@@ -87,17 +87,17 @@ decodeFromWsPath wspath = SID.decodeSessionId (T.drop 4 wspath)
 
 -- TODO: / だと Accept: text/html 使わないやつがいる？
 --
--- 1) Some browser accepts */* for /favicon.ico which triggers
+-- 1. Some browser accepts star/star for /favicon.ico which triggers
 -- unintended pre-rendering. This guard is for those who forgot to
 -- handle /favicon.ico requests.
 --
--- 2) We only accept GET/HEAD requests which accepts text/html or
+-- 2. We only accept GET/HEAD requests which accepts text/html or
 -- request path is "/". The later condition is for crollers which
 -- might not properly set accept headers. Pre-renders run even with
 -- HEAD requests but session is not started/stored and required
 -- resources are released.
 --
--- 3) Just use "/" as ws path because warp discards HEAD response body
+-- 3. Just use "/" as ws path because warp discards HEAD response body
 -- anyway.
 backendApp :: Config st -> SessionManage -> Application
 backendApp Config{..} sm req respond
@@ -119,10 +119,24 @@ backendApp Config{..} sm req respond
     | otherwise =
         respond $ responseLBS status404 [] ""
   where
+    ctx = Context
+        { registerCallback = \cb -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
+            ( ( cbId + 1
+              , flip (M.insert cbId) cbs' $ \arg -> case A.fromJSON arg of
+                  A.Success arg' -> cb arg'
+                  A.Error e -> traceIO $ "callCallback: couldn't decode " <> show arg <> ": " <> show e
+              )
+            , Callback cbId
+            )
+        , unregisterCallback = \(Callback cbId') -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
+            ((cbId, M.delete cbId' cbs'), ())
+        , call = \arg js -> sendTextData conn $ A.encode $ Call (A.toJSON arg) js
+        }
+
     app' =
         S.Application
             { S.cfgInitial = cfgInitial
-            , S.cfgStep = cfgStep
+            , S.cfgStep = cfgStep ctx
             }
 
     isAcceptable = isJust $ do
