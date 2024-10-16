@@ -42,7 +42,7 @@ import Control.Concurrent.STM (
 import Control.Exception (SomeException, evaluate, finally, mask, mask_, onException)
 import Control.Monad (forever, join)
 import Data.Bool (bool)
-import Data.IORef (atomicModifyIORef, newIORef)
+import Data.IORef (atomicModifyIORef, newIORef, IORef, readIORef)
 import Data.Maybe (isJust)
 import Data.Void (Void, absurd)
 import Data.Functor ((<&>))
@@ -53,7 +53,7 @@ import qualified Control.Monad.Trans.Resource as RI
 import Replica.Types (Event (..), SessionEventError (InvalidEvent), Context (..), Callback (..), Update (Call))
 import qualified Replica.VDOM as V
 import qualified Data.Map                       as M
-import Network.WebSockets.Connection (sendTextData)
+import Network.WebSockets.Connection (sendTextData, Connection)
 import qualified Data.Aeson as A
 import Debug.Trace (traceIO)
 import           Data.IORef                     (newIORef, atomicModifyIORef')
@@ -128,11 +128,12 @@ data Session = Session
     , sesEventQueue :: TQueue Event -- TBqueue might be better
     , sesThread :: Async ()
     }
-
+type Callbacks = M.Map Int (A.Value -> IO ())
 data Frame = Frame
     { frameNumber :: Int
     , frameVdom :: V.HTML
     , frameFire :: Event -> Maybe (IO ())
+    , frameCallbacks :: IORef (Int, Callbacks)
     }
 
 data TerminatedReason
@@ -238,7 +239,7 @@ firstStep Application{cfgInitial = initial, cfgStep = step, cfgConn = conn} = ma
                 pure $
                     Just
                         ( vdom
-                        , startSession release (step ctx) rstate (vdom, state, unblock)
+                        , startSession release (step ctx) rstate (vdom, state, unblock) cbs
                         , release
                         )
   where
@@ -257,10 +258,11 @@ startSession ::
     (st -> ResourceT IO (Maybe (V.HTML, st, IO ()))) ->
     RI.InternalState ->
     (V.HTML, st, IO ()) ->
+    IORef (Int, Callbacks) ->
     IO Session
-startSession release step rstate (vdom, st, unblock) = flip onException release $ do
-    let frame0 = Frame 0 vdom (const $ Just $ pure ())
-    let frame1 = Frame 1 vdom (\e -> dispatchEvent vdom e <&> (>> unblock))
+startSession release step rstate (vdom, st, unblock) cbs = flip onException release $ do
+    let frame0 = Frame 0 vdom (const $ Just $ pure ()) cbs
+    let frame1 = Frame 1 vdom (\e -> dispatchEvent vdom e <&> (>> unblock)) cbs
     (fv, qv) <- atomically $ do
         r <- newTMVar Nothing
         f <- newTVar (frame0, r)
@@ -307,7 +309,7 @@ stepLoop ::
     st ->
     Frame ->
     ResourceT IO ()
-stepLoop setNewFrame step st frame = do
+stepLoop setNewFrame step st frame@(Frame _ _ _ cbs) = do
     stepedBy <- liftIO $ setNewFrame frame
     r <- step st -- This should be the only blocking part
     _ <- liftIO . atomically $ tryPutTMVar stepedBy Nothing
@@ -315,7 +317,7 @@ stepLoop setNewFrame step st frame = do
         Nothing -> pure ()
         Just (_newVdom, newSt, unblock) -> do
             newVdom <- liftIO $ evaluate _newVdom
-            let newFrame = Frame (frameNumber frame + 1) newVdom (\e -> dispatchEvent newVdom e <&> (>> unblock))
+            let newFrame = Frame (frameNumber frame + 1) newVdom (\e -> dispatchEvent newVdom e <&> (>> unblock)) cbs
             stepLoop setNewFrame step newSt newFrame
 
 {- | fireLoop
@@ -333,9 +335,9 @@ fireLoop getNewFrame getEvent = forever $ do
     let act = atomically $ do
             r <- Left <$> getEvent <|> Right <$> readTMVar stepedBy -- (1)
             case r of
-                Left ev -> case frameFire frame ev of
+                Left ev@(Event {..}) -> case frameFire frame ev of
                     Nothing
-                        | evtClientFrame ev < frameNumber frame ->
+                        | evtClientFrame < frameNumber frame ->
                             -- Event was undispatchable.
                             -- Event was from past frame, so we just ignore it wait for next event.
                             pure $ join act
@@ -351,6 +353,12 @@ fireLoop getNewFrame getEvent = forever $ do
                         -- That menas stepedBy is filled with a event that actually didn't resume `step'
                         stillBlocking <- tryPutTMVar stepedBy (Just ev) -- (2)
                         pure $ if stillBlocking then fire' else pure ()
+                Left (CallCallback arg cbId) -> case frameCallbacks frame of
+                    cbs -> pure $ do
+                      (_, cbs') <- readIORef cbs
+                      case M.lookup cbId cbs' of
+                        Just cb -> cb arg
+                        Nothing -> pure ()
                 Right _ ->
                     pure $ pure ()
     join act
