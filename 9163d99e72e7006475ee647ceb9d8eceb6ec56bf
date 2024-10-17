@@ -17,4 +17,4 @@ backendApp
 
 fireLoop use TMVar stepedBy to see if stepLoop is stillBlocking, can it be implemented in syncrhon?
 
-frameFire -> dispatchEvent -> fireEvent -> ... -> fireWithAttrs -> (\de -> void $ push ctx e de) in synchron
+frameFire -> dispatchEvent -> fireEvent -> fireEventOnNode -> fireWithAttrs -> (\de -> void $ push ctx e de) in synchron
