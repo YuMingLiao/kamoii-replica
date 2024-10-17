@@ -2,3 +2,13 @@ kamoii's replica ReplaceDom then UpdateDom (all are Frame)
 ctx give call to Syn, which is a Syn IO.
 But I can't get conn early, conn is in attachSessionWithWebsocket
 HTML becomes Frame.
+
+websocketApp
+  withSession
+    attachSessionWithWebsocket
+     frameLoop (conn out) & eventLoop (conn in)
+
+backendApp
+  preRender
+    firstStep
+      stepLoop (by Syn or Concur monad, unblock) & fireLoop (by event)
