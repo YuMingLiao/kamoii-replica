@@ -143,7 +143,7 @@ data TerminatedReason
 -- * Session operation
 
 {- | Current frame.
-There is aleays a frame even for terminated sessions.
+There is always a frame even for terminated sessions.
 -}
 currentFrame :: Session -> STM (Frame, STM (Maybe Event))
 currentFrame Session{sesFrame} = do
@@ -311,7 +311,7 @@ stepLoop ::
     ResourceT IO ()
 stepLoop setNewFrame step st frame@(Frame _ _ _ cbs) = do
     stepedBy <- liftIO $ setNewFrame frame
-    r <- step st -- This should be the only blocking part
+    r <- step st -- This should be the only blocking part   -- so stepping is server-side event?
     _ <- liftIO . atomically $ tryPutTMVar stepedBy Nothing
     case r of
         Nothing -> pure ()
@@ -346,11 +346,11 @@ fireLoop getNewFrame getEvent = forever $ do
                             -- This means something is wrong(event is broken, dispatch logic has bug, etc).
                             throwSTM InvalidEvent
                     Just fire' -> do
-                        -- Event is dispatcable.
+                        -- Event is dispatchable.
                         -- Actually fire only if current frame's `step' is still blocking.
                         -- Though for rare case, just right after we tryPutTMVar,
                         -- the `step' blocking could resume before we actually fire event.
-                        -- That menas stepedBy is filled with a event that actually didn't resume `step'
+                        -- That means stepedBy is filled with a event that actually didn't resume `step'
                         stillBlocking <- tryPutTMVar stepedBy (Just ev) -- (2)
                         pure $ if stillBlocking then fire' else pure ()
                 Left (CallCallback arg cbId) -> case frameCallbacks frame of
