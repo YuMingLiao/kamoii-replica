@@ -16,3 +16,5 @@ backendApp
 `steppedBy` means this frame is stepped by (1) client-side event or (2) server-side event. new frame won't be created until old frame is stepped by either of them.
 
 fireLoop use TMVar stepedBy to see if stepLoop is stillBlocking, can it be implemented in syncrhon?
+
+frameFire -> dispatchEvent -> fireEvent -> ... -> fireWithAttrs -> (\de -> void $ push ctx e de) in synchron
