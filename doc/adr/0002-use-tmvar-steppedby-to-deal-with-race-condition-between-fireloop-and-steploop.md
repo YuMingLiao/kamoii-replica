@@ -16,8 +16,10 @@ use TMVar to deal with race condition between firing events and stepping frames
 
 alternative:
 synchron hasn't implemented orr io so maybe it's not an option for this context.
-But synchron is logical event time, so maybe fireLoop can orr [await newFrame, await clientEvent' >> fire (loop)]
-and stepLoop can emit steppedBy/newFrame
+But synchron is logical event time, so maybe 
+
+fireLoop can orr [await newFrame, await clientEvent' >> fire (loop)]
+and stepLoop can forever $ emit steppedBy/newFrame
 
 eventLoop: forever $ receiveData conn; emit clientEvent
 can emit e replace EventQueue : TQueue?

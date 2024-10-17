@@ -301,7 +301,7 @@ startSession release step rstate (vdom, st, unblock) cbs = flip onException rele
 
  ※1 Unfortunatlly, we don't have a garuntee that step was actually procceded by client-side event when
  `stepBy` is filled with `Just Event`. When we receive a dispatchable event, we fill `stepBy`
- before actually firing it. While firing the event, servier-side event could procceed the step.
+ before actually firing it. While firing the event, server-side event could procceed the step.
 -}
 stepLoop ::
     (Frame -> IO (TMVar (Maybe Event))) ->
