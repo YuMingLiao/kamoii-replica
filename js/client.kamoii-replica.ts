@@ -4,13 +4,11 @@ type DOM = {
 } | {
   type: 'leaf',
   attrs: { [key: string]: string | null },
-  element: string,
-  namespace: string | null
+  element: string
 } | {
   type: 'node',
   attrs: { [key: string]: string | null },
   element: string,
-  namespace: string | null,
   children: DOM[]
 };
 
@@ -63,10 +61,6 @@ type Update = {
   serverFrame: number,
   clientFrame: number | null,
   diff: Diff[]
-} | {
-  type: 'call',
-  arg: any,
-  js: string
 };
 
 const MAX_FRAMES = 20;
@@ -158,18 +152,12 @@ function getElementIndex(el: any): number {
     return i;
 }
 
-function getElementPath(el: Element): number[] | null {
+function getElementPath(el: Element): number[] {
   const path = [];
 
   while (el !== document.body) {
     path.unshift(getElementIndex(el));
-
-    if (el.parentElement != null) {
-      el = el.parentElement;
-    }
-    else {
-      return null;
-    }
+    el = (el as any).parentElement;
   }
 
   path.shift();
@@ -177,34 +165,9 @@ function getElementPath(el: Element): number[] | null {
   return path;
 }
 
-const listeners: Map<Element, Map<string, [EventListener, boolean]>> = new Map();
+const listeners: Map<Element, Map<string, EventListener>> = new Map();
 
-const queuedMessages: (() => any | null)[] = [];
-let messageWasSent: boolean = false;
-
-function dequeueMessage(ws: WebSocket) {
-  if (queuedMessages.length > 0 && messageWasSent) {
-    console.log('Message is queued, waiting for DOM update to send...');
-  }
-
-  if (queuedMessages.length > 0 && !messageWasSent) {
-    const f = queuedMessages.shift();
-    const msg = f ? f() : null;
-
-    if (msg) {
-      messageWasSent = true;
-      ws.send(JSON.stringify(msg));
-    }
-  }
-}
-
-type EventOptions = { 
-  capture: boolean,
-  preventDefault: boolean,
-  stopPropagation: boolean
-};
-
-function setEventListener(ws: WebSocket, element: Element, name: string, opts: EventOptions) {
+function setEventListener(ws: WebSocket, element: Element, name: string) {
   const eventName = name.substring(2).toLowerCase();
 
   const listener = (event: any) => {
@@ -219,41 +182,18 @@ function setEventListener(ws: WebSocket, element: Element, name: string, opts: E
       addFrame(element, serverFrame, 'value', (event.target as any).value);
     }
 
-    queuedMessages.push(() => {
-      const path = getElementPath(element);
-
-      if (path) {
-        const msg = {
-          type: 'event',
-          eventType: name,
-          event: JSON.parse(stringifyEvent(event)),
-          path: getElementPath(element),
-          clientFrame: serverFrame,
-        };
-
-        if (eventName === 'input') {
-          addFrame(element, serverFrame, 'value', (event.target as any).value);
-        }
-
-        return msg;
-      }
-      else {
-        return null;
-      }
-    });
-
-    dequeueMessage(ws);
+    ws.send(JSON.stringify(msg));
   }
 
-  element.addEventListener(eventName, listener, opts.capture);
+  element.addEventListener(eventName, listener);
 
   const elementListeners = listeners.get(element);
 
   if (elementListeners === undefined) {
-    listeners.set(element, new Map([[name, [listener, opts.capture]]]));
+    listeners.set(element, new Map([[name, listener]]));
   }
   else {
-    elementListeners.set(name, [listener, opts.capture]);
+    elementListeners.set(name, listener);
   }
 }
 
@@ -263,7 +203,7 @@ function setAttribute(ws: WebSocket, element: any, onProp: boolean, attr: string
   }
   else {
     if (attr.startsWith('on')) {
-      setEventListener(ws, element, attr, value);
+      setEventListener(ws, element, attr);
     }
     else if (value !== null) {
       if (attr === 'value') {
@@ -360,12 +300,7 @@ function removeAttribute(element: any, onProp: boolean, attr: string) {
 
       if (m !== undefined) {
         const eventName = attr.substring(2).toLowerCase();
-        const v = m.get(attr);
-
-        if (v) {
-          const [listener, capture] = v;
-          element.removeEventListener(eventName, listener, capture);
-        }
+        element.removeEventListener(eventName, m.get(attr));
 
         m.delete(attr);
 
@@ -394,7 +329,6 @@ function patchAttribute(ws: WebSocket, element: any, onProp: boolean, adiff: Att
       for (const vdiff of adiff.diff) {
         switch (vdiff.type) {
           case 'replace':
-            removeAttribute(element, onProp, adiff.key);
             setAttribute(ws, element, onProp, adiff.key, vdiff.value);
             break;
 
@@ -418,7 +352,7 @@ function buildDOM(ws: WebSocket, dom: DOM, index: number | null, parent: Element
       break;
 
     case 'leaf':
-      element = dom.namespace ? document.createElementNS(dom.namespace, dom.element) : document.createElement(dom.element);
+      element = document.createElement(dom.element);
 
       for (const [key, value] of Object.entries(dom.attrs)) {
         patchAttribute(ws, element, false, { type: 'insert', key, value });
@@ -427,7 +361,7 @@ function buildDOM(ws: WebSocket, dom: DOM, index: number | null, parent: Element
       break;
 
     case 'node':
-      element = dom.namespace ? document.createElementNS(dom.namespace, dom.element) : document.createElement(dom.element);
+      element = document.createElement(dom.element);
 
       for (let i = 0; i < dom.children.length; i++) {
         buildDOM(ws, dom.children[i], null, element);
@@ -489,26 +423,8 @@ function connect() {
   let root = root_
   const wsPath = document.body.dataset[WS_PATH_DATA_ATTR]
   const port = window.location.port ? window.location.port : (window.location.protocol === 'http:' ? 80 : 443);
-  const wsProtocol = window.location.protocol === 'http:' ? 'ws:' : 'wss:';
-  const ws = new WebSocket(wsProtocol + "//" + window.location.hostname + ":" + port);
-
-  document.body.appendChild(root);
-
-  (window as any)['callCallback'] = (cbId: number, arg: any, queue: boolean) => {
-    const msg = {
-      type: 'call',
-      arg,
-      id: cbId
-    };
-
-    if (queue) {
-      queuedMessages.push(() => msg);
-      dequeueMessage(ws);
-    }
-    else {
-      ws.send(JSON.stringify(msg));
-    }
-  };
+  const ws = new WebSocket("ws://" + window.location.hostname + ":" + port + wsPath);
+  const developMode = new URLSearchParams(window.location.search).get("_mode") == "develop"
 
   ws.onmessage = (event) => {
     const update: Update = JSON.parse(event.data);
@@ -534,16 +450,8 @@ function connect() {
           clientFrame = update.clientFrame;
 
           patch(ws, update.serverFrame, update.diff, root);
-
-          messageWasSent = false;
-          dequeueMessage(ws);
         }
 
-        break;
-
-      case 'call':
-        const f = new Function("arg", update.js);
-        f(update.arg);
         break;
     }
   };
@@ -551,13 +459,6 @@ function connect() {
   ws.onclose = (event) => {
     console.log(event)
     switch (event.code) {
-      case CLOSE_CODE_ABNORMAL_CLOSURE:
-        // Server-side ended abnormally, reconnect.
-        // console.log("Reconnecting...");
-
-        // document.body.removeChild(root);
-        // connect();
-        break;
       case CLOSE_CODE_NORMAL_CLOSURE:
         // Server-side gracefully ended.
         break;
