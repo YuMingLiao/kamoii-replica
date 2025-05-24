@@ -102,12 +102,6 @@ function dequeueMessage(ws) {
 function setEventListener(ws, element, name, opts) {
     const eventName = name.substring(2).toLowerCase();
     const listener = (event) => {
-        const msg = {
-            eventType: name,
-            event: JSON.parse(stringifyEvent(event)),
-            path: getElementPath(element),
-            clientFrame: serverFrame,
-        };
         if (eventName === 'input') {
             addFrame(element, serverFrame, 'value', event.target.value);
         }
@@ -336,7 +330,8 @@ function connect() {
     const wsPath = document.body.dataset[WS_PATH_DATA_ATTR];
     const port = window.location.port ? window.location.port : (window.location.protocol === 'http:' ? 80 : 443);
     const wsProtocol = window.location.protocol === 'http:' ? 'ws:' : 'wss:';
-    const ws = new WebSocket(wsProtocol + "//" + window.location.hostname + ":" + port);
+    const ws = new WebSocket(wsProtocol + "//" + window.location.hostname + ":" + port + wsPath);
+    const developMode = new URLSearchParams(window.location.search).get("_mode") == "develop";
     document.body.appendChild(root);
     window['callCallback'] = (cbId, arg, queue) => {
         const msg = {
