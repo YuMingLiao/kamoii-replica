@@ -22,7 +22,7 @@ import qualified Data.Text.Encoding as T
 
 import Replica.VDOM.Diff (AttrDiff, Diff, diff, diffAttrs, patch, patchAttrs)
 import Replica.VDOM.Render (renderHTML)
-import Replica.VDOM.Types (Attr (ABool, AEvent, AMap, AText), Attrs, DOMEvent(DOMEvent), HTML, VDOM (VLeaf, VNode, VRawText, VText))
+import Replica.VDOM.Types (Attr (ABool, AEvent, AMap, AText), Attrs, DOMEvent(DOMEvent), HTML, VDOM (VLeaf, VNode, VRawText, VText), Namespace(Namespace, getNamespace))
 
 t :: T.Text -> T.Text
 t = id

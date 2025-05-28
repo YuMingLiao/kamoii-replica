@@ -102,9 +102,6 @@ function dequeueMessage(ws) {
 function setEventListener(ws, element, name, opts) {
     const eventName = name.substring(2).toLowerCase();
     const listener = (event) => {
-        if (eventName === 'input') {
-            addFrame(element, serverFrame, 'value', event.target.value);
-        }
         queuedMessages.push(() => {
             const path = getElementPath(element);
             if (path) {

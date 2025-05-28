@@ -209,10 +209,6 @@ function setEventListener(ws: WebSocket, element: Element, name: string, opts: E
 
   const listener = (event: any) => {
     
-    if (eventName === 'input') {
-      addFrame(element, serverFrame, 'value', (event.target as any).value);
-    }
-
     queuedMessages.push(() => {
       const path = getElementPath(element);
 
