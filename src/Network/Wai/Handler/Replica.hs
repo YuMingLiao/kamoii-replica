@@ -303,7 +303,7 @@ attachSessionToWebsocket conn ses = withWorker eventLoop frameLoop
 
     eventLoop :: IO Void
     eventLoop = forever $ do
-        ev' <- (A.decode . (\bs -> trace (show bs) bs)) <$> receiveData conn
+        ev' <- A.decode <$> receiveData conn
         ev <- maybe (throwIO IllformedData) pure ev'
         atomically $ S.feedEvent ses ev
 
