@@ -225,7 +225,7 @@ firstStep Application{cfgInitial = initial, cfgStep = step, cfgConn = conn} = ma
               )
           , unregisterCallback = \(Callback cbId') -> atomicModifyIORef' cbs $ \(cbId, cbs') ->
               ((cbId, M.delete cbId' cbs'), ())
-          , call = \arg js -> sendTextData undefined $ A.encode $ Call (A.toJSON arg) js
+          , call = \arg js -> sendTextData conn $ A.encode $ Call (A.toJSON arg) js
           }
 
     flip onException release $ do
